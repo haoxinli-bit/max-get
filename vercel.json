@@ -1,7 +1,8 @@
 {
   "functions": {
     "api/copilot.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "node_modules/@github/copilot-sdk-*/**"
     }
   }
 }
