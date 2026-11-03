@@ -335,19 +335,19 @@
           <div><label class="field-label" for="input-source">需求来源</label><select id="input-source" name="source"><option>用户反馈</option><option>业务规划</option><option>数据洞察</option><option>竞品观察</option><option>团队想法</option></select></div>
           <div><label class="field-label" for="input-priority">优先级</label><select id="input-priority" name="priority"><option>中</option><option>高</option><option>低</option></select></div>
         </div>
-        <div class="modal-backdrop hidden" id="copilot-modal" role="dialog" aria-modal="true" aria-labelledby="copilot-modal-title">
-          <form class="modal copilot-connect-modal" id="copilot-connect-form">
-            <div class="modal-heading"><div><p class="eyebrow">AI 协作 · 个人授权</p><h2 id="copilot-modal-title">连接 GitHub Copilot</h2><p>使用你自己的 Copilot 账号与可用模型。</p></div><button type="button" class="modal-close" id="copilot-modal-close" aria-label="关闭">×</button></div>
-            <div class="copilot-auth-explainer"><span>✦</span><p>为避免共享部署账号的额度，请输入你自己的 GitHub Copilot 授权令牌。Maxget 只在当前页面会话的内存中使用令牌，不会保存到浏览器或服务器。</p></div>
-            <label class="field-label" for="copilot-token">GitHub Copilot token</label>
-            <input id="copilot-token" type="password" autocomplete="off" spellcheck="false" required placeholder="github_pat_… 或 gho_…" />
-            <p class="token-help">可使用拥有 Copilot Requests 权限的 fine-grained PAT，且账号需要有可用的 Copilot 订阅。令牌只通过 HTTPS 发送到 Maxget API，并由 GitHub Copilot SDK 使用。</p>
-            <p class="token-help"><a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#supported-token-types" target="_blank" rel="noopener noreferrer">查看 Copilot 支持的授权方式 ↗</a></p>
-            <div class="modal-actions"><button type="button" class="button button-secondary" id="copilot-modal-cancel">取消</button><button type="submit" class="button button-primary" id="copilot-connect-submit">验证并连接 <span>→</span></button></div>
-            <p class="connect-error hidden" id="copilot-connect-error"></p>
-          </form>
-        </div>
         <div class="modal-actions"><button type="button" class="button button-secondary" id="modal-cancel">取消</button><button type="submit" class="button button-primary" id="requirement-submit">添加到需求池 <span>→</span></button></div>
+      </form>
+    </div>
+    <div class="modal-backdrop hidden" id="copilot-modal" role="dialog" aria-modal="true" aria-labelledby="copilot-modal-title">
+      <form class="modal copilot-connect-modal" id="copilot-connect-form">
+        <div class="modal-heading"><div><p class="eyebrow">AI 协作 · 个人授权</p><h2 id="copilot-modal-title">连接 GitHub Copilot</h2><p>使用你自己的 Copilot 账号与可用模型。</p></div><button type="button" class="modal-close" id="copilot-modal-close" aria-label="关闭">×</button></div>
+        <div class="copilot-auth-explainer"><span>✦</span><p>为避免共享部署账号的额度，请输入你自己的 Copilot 授权令牌。Maxget 只在当前页面会话的内存中使用令牌，不会保存到浏览器或服务器。</p></div>
+        <label class="field-label" for="copilot-token">GitHub Copilot token</label>
+        <input id="copilot-token" type="password" autocomplete="off" spellcheck="false" required placeholder="github_pat_… 或 gho_…" />
+        <p class="token-help">可使用拥有 Copilot Requests 权限的 fine-grained PAT，且账号需要有可用的 Copilot 订阅。令牌只通过 HTTPS 发送到 Maxget API，并由 GitHub Copilot SDK 使用。</p>
+        <p class="token-help"><a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#supported-token-types" target="_blank" rel="noopener noreferrer">查看 Copilot 支持的授权方式 ↗</a></p>
+        <div class="modal-actions"><button type="button" class="button button-secondary" id="copilot-modal-cancel">取消</button><button type="submit" class="button button-primary" id="copilot-connect-submit">验证并连接 <span>→</span></button></div>
+        <p class="connect-error hidden" id="copilot-connect-error"></p>
       </form>
     </div>
     <div class="toast" id="toast" role="status"></div>
