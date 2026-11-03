@@ -38,6 +38,10 @@
             <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M8 5h11M8 12h11M8 19h11"/><circle cx="4" cy="5" r=".7"/><circle cx="4" cy="12" r=".7"/><circle cx="4" cy="19" r=".7"/></svg></span>
             <span>需求池</span><span class="nav-count" id="nav-count">8</span>
           </button>
+          <button class="nav-item" data-view="copilot">
+            <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M12 3.5 14 9l5.5 2-5.5 2-2 5.5L10 13l-5.5-2L10 9l2-5.5Z"/><path d="m18.5 16 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></svg></span>
+            <span>Copilot 对话</span><span class="ai-nav-dot"></span>
+          </button>
           <button class="nav-item" data-view="prototype">
             <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M8 4v5"/></svg></span>
             <span>原型设计</span>
@@ -69,6 +73,7 @@
           <div class="breadcrumbs"><span>星河产品组</span><i>/</i><strong id="breadcrumb-current">总览</strong></div>
           <div class="topbar-actions">
             <span class="demo-badge"><span></span> 本地演示模式</span>
+            <button class="copilot-status" id="open-ai-settings"><span class="copilot-status-icon">✦</span><span id="copilot-status-text">连接 Copilot</span></button>
             <button class="icon-button" aria-label="通知" title="通知">♧<span class="notification-dot"></span></button>
             <span class="topbar-divider"></span>
             <span class="topbar-date" id="today-label"></span>
@@ -181,7 +186,7 @@
         <section class="view" id="view-analysis">
           <div class="page-heading">
             <div><p class="eyebrow">产品探索 · 需求分析</p><h1 id="analysis-title">需求洞察</h1><p class="subheading">从用户问题出发，找到值得解决的产品机会。</p></div>
-            <div class="heading-actions"><button class="button button-secondary" id="analysis-back">← 返回需求池</button><button class="button button-primary" id="analysis-to-prototype">生成原型 <span>↗</span></button></div>
+            <div class="heading-actions"><button class="button button-secondary" id="analysis-back">← 返回需求池</button><button class="button button-ai" id="analyze-with-copilot">✦ Copilot 深度分析</button><button class="button button-primary" id="analysis-to-prototype">生成原型 <span>↗</span></button></div>
           </div>
           <div class="analysis-layout">
             <div class="analysis-main">
@@ -201,12 +206,48 @@
                 <div class="panel-heading"><div><h2>下一步建议</h2><p>帮助团队从想法走向可验证方案</p></div></div>
                 <div class="recommendations" id="analysis-recommendations"></div>
               </article>
+              <article class="panel copilot-analysis-result hidden" id="copilot-analysis-result">
+                <div class="panel-heading"><div><h2>Copilot 产品分析</h2><p id="copilot-analysis-source">基于当前需求生成</p></div><span class="local-ai-tag"><span></span> GitHub Copilot</span></div>
+                <div class="copilot-analysis-content" id="copilot-analysis-content"></div>
+                <div class="copilot-analysis-footer"><span>AI 建议可能不完整；市场结论与技术方案请进一步验证。</span><button class="text-link" id="discuss-analysis">继续对话 →</button></div>
+              </article>
             </div>
             <aside class="analysis-aside">
               <article class="panel detail-card"><h3>需求信息</h3><div class="detail-row"><span>优先级</span><strong id="detail-priority"></strong></div><div class="detail-row"><span>当前状态</span><strong><button class="status-pill" id="detail-status" type="button" aria-label="推进需求状态"></button></strong></div><div class="detail-row"><span>需求来源</span><strong id="detail-source"></strong></div><div class="detail-row"><span>负责人</span><strong id="detail-owner"></strong></div><div class="detail-row"><span>创建时间</span><strong id="detail-date"></strong></div></article>
               <article class="panel next-step-card"><div class="step-icon">✳</div><h3>准备好继续了吗？</h3><p>把分析转化为清晰的交互流程，让团队更快对齐。</p><button class="button button-dark" id="aside-to-prototype">开始设计原型 <span>→</span></button></article>
               <p class="demo-disclaimer">这是基于模板规则生成的演示分析，并非 AI 输出。请结合真实用户研究进行判断。</p>
             </aside>
+          </div>
+        </section>
+
+        <section class="view" id="view-copilot">
+          <div class="page-heading">
+            <div><p class="eyebrow">产品探索 · AI 协作</p><h1>Copilot 产品对话</h1><p class="subheading">讨论需求、梳理方案，并持续反馈修正分析。</p></div>
+            <div class="heading-actions"><select class="model-select" id="ai-model-selector" aria-label="选择 Copilot 模型" disabled><option>连接 Copilot 后选择模型</option></select><button class="button button-secondary" id="disconnect-copilot" disabled>断开连接</button></div>
+          </div>
+          <div class="copilot-workspace panel">
+            <aside class="copilot-context">
+              <div class="copilot-context-heading"><span class="copilot-context-mark">✦</span><div><strong>产品顾问</strong><small>由你的 GitHub Copilot 授权</small></div></div>
+              <label class="select-label" for="chat-requirement-select">对话需求背景</label>
+              <select id="chat-requirement-select"></select>
+              <div class="context-requirement" id="chat-requirement-preview"></div>
+              <div class="copilot-context-label">快速开始</div>
+              <button class="prompt-suggestion" data-prompt="请根据当前需求分析用户问题、目标用户、成功指标和待验证假设。">分析当前需求 <span>↗</span></button>
+              <button class="prompt-suggestion" data-prompt="请评审当前产品方案的 UI / UX，指出关键页面、信息层级、交互状态、无障碍和移动端适配建议。">评审 UI / UX <span>↗</span></button>
+              <button class="prompt-suggestion" data-prompt="请基于当前需求给出可行的技术架构、部署方案、依赖、风险和分阶段实施计划。">部署与可行性 <span>↗</span></button>
+              <button class="prompt-suggestion" data-prompt="请分析当前产品机会的目标市场、用户价值、替代方案、差异化假设和低成本验证方法。不要虚构市场规模或竞品数据。">市场与验证建议 <span>↗</span></button>
+              <p class="copilot-context-note">上传的文档和聊天内容会发送给 GitHub Copilot。Maxget 不会保存你的授权令牌或上传的原文件。</p>
+            </aside>
+            <section class="chat-panel">
+              <div class="chat-header"><div><strong>Maxget × Copilot</strong><span id="chat-model-label">等待连接</span></div><button class="icon-button chat-clear" id="clear-chat" title="清空对话" aria-label="清空对话">↺</button></div>
+              <div class="chat-messages" id="chat-messages" aria-live="polite">
+                <div class="chat-welcome" id="chat-welcome"><span class="chat-welcome-mark">✦</span><h2>一起把产品想清楚。</h2><p>连接你的 GitHub Copilot 后，可以分析需求文档、评审 UI / UX、讨论部署与可行性，并随时提供反馈。</p><button class="button button-primary" id="connect-from-chat">连接 GitHub Copilot <span>→</span></button></div>
+              </div>
+              <div class="chat-composer-wrap">
+                <form class="chat-composer" id="chat-form"><textarea id="chat-input" rows="2" maxlength="4000" placeholder="连接 Copilot 后，输入你想讨论的产品问题…" disabled></textarea><div class="composer-footer"><span>Enter 发送 · Shift + Enter 换行</span><button class="send-button" id="send-chat" type="submit" disabled aria-label="发送消息">↑</button></div></form>
+                <p class="chat-privacy-note">回答由所选 Copilot 模型生成，请核实市场数据、技术可行性及高影响决策。</p>
+              </div>
+            </section>
           </div>
         </section>
 
@@ -281,14 +322,32 @@
       <form class="modal" id="requirement-form">
         <div class="modal-heading"><div><p class="eyebrow">需求池 · 新建</p><h2 id="modal-title">记录一个新想法</h2><p>先捕捉问题，细节可以之后再完善。</p></div><button type="button" class="modal-close" id="modal-close" aria-label="关闭">×</button></div>
         <label class="field-label" for="input-title">需求名称 <span>*</span></label>
-        <input id="input-title" name="title" maxlength="70" required placeholder="例如：让订单状态更容易追踪" />
+        <input id="input-title" name="title" maxlength="70" placeholder="例如：让订单状态更容易追踪" />
         <label class="field-label" for="input-description">问题描述</label>
         <textarea id="input-description" name="description" rows="4" maxlength="600" placeholder="谁在什么情况下遇到了什么问题？"></textarea>
+        <div class="document-upload">
+          <label class="field-label" for="input-document">从钉钉文档建立需求 <span class="optional-label">可选</span></label>
+          <label class="upload-drop" for="input-document"><span class="upload-icon">↑</span><span><strong id="upload-title">选择导出的文档</strong><small id="upload-description">支持 DOCX、PDF、TXT、Markdown、CSV，最大 4 MB</small></span><span class="upload-action">选择文件</span></label>
+          <input class="file-input" id="input-document" name="document" type="file" accept=".docx,.pdf,.txt,.md,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv" />
+          <p class="upload-privacy">请先从钉钉导出文档。文件内容会发送给 GitHub Copilot 分析；原文件仅在请求处理中暂存，不会写入 Maxget 存储。</p>
+        </div>
         <div class="form-grid">
           <div><label class="field-label" for="input-source">需求来源</label><select id="input-source" name="source"><option>用户反馈</option><option>业务规划</option><option>数据洞察</option><option>竞品观察</option><option>团队想法</option></select></div>
           <div><label class="field-label" for="input-priority">优先级</label><select id="input-priority" name="priority"><option>中</option><option>高</option><option>低</option></select></div>
         </div>
-        <div class="modal-actions"><button type="button" class="button button-secondary" id="modal-cancel">取消</button><button type="submit" class="button button-primary">添加到需求池 <span>→</span></button></div>
+        <div class="modal-backdrop hidden" id="copilot-modal" role="dialog" aria-modal="true" aria-labelledby="copilot-modal-title">
+          <form class="modal copilot-connect-modal" id="copilot-connect-form">
+            <div class="modal-heading"><div><p class="eyebrow">AI 协作 · 个人授权</p><h2 id="copilot-modal-title">连接 GitHub Copilot</h2><p>使用你自己的 Copilot 账号与可用模型。</p></div><button type="button" class="modal-close" id="copilot-modal-close" aria-label="关闭">×</button></div>
+            <div class="copilot-auth-explainer"><span>✦</span><p>为避免共享部署账号的额度，请输入你自己的 GitHub Copilot 授权令牌。Maxget 只在当前页面会话的内存中使用令牌，不会保存到浏览器或服务器。</p></div>
+            <label class="field-label" for="copilot-token">GitHub Copilot token</label>
+            <input id="copilot-token" type="password" autocomplete="off" spellcheck="false" required placeholder="github_pat_… 或 gho_…" />
+            <p class="token-help">可使用拥有 Copilot Requests 权限的 fine-grained PAT，且账号需要有可用的 Copilot 订阅。令牌只通过 HTTPS 发送到 Maxget API，并由 GitHub Copilot SDK 使用。</p>
+            <p class="token-help"><a href="https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli#supported-token-types" target="_blank" rel="noopener noreferrer">查看 Copilot 支持的授权方式 ↗</a></p>
+            <div class="modal-actions"><button type="button" class="button button-secondary" id="copilot-modal-cancel">取消</button><button type="submit" class="button button-primary" id="copilot-connect-submit">验证并连接 <span>→</span></button></div>
+            <p class="connect-error hidden" id="copilot-connect-error"></p>
+          </form>
+        </div>
+        <div class="modal-actions"><button type="button" class="button button-secondary" id="modal-cancel">取消</button><button type="submit" class="button button-primary" id="requirement-submit">添加到需求池 <span>→</span></button></div>
       </form>
     </div>
     <div class="toast" id="toast" role="status"></div>

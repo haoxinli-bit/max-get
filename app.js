@@ -117,6 +117,13 @@ let activeFilter = "all";
 let selectedRequirementId = requirements[0]?.id ?? null;
 let toastTimer;
 let prd = loadPrd();
+const copilotState = {
+  token: null,
+  models: [],
+  modelId: "",
+  messages: [],
+  busy: false,
+};
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -222,6 +229,7 @@ function renderRequirements() {
   $("#progress-bar").style.width = `${percent}%`;
   $("#progress-percent").textContent = `${percent}%`;
   refreshPrototypeOptions();
+  refreshChatRequirementOptions();
 }
 
 function currentRequirement() {
@@ -279,6 +287,7 @@ function renderAnalysis(item) {
   $("#analysis-opportunity").textContent = opportunity;
   $("#analysis-metrics").innerHTML = metrics.map((metric) => `<span class="metric-chip">${escapeHtml(metric)}</span>`).join("");
   $("#analysis-recommendations").innerHTML = recommendations.map(([number, heading, body]) => `<article class="recommendation"><span class="recommendation-number">${number} / 建议</span><h3>${heading}</h3><p>${body}</p></article>`).join("");
+  renderCopilotAnalysis(item);
   $("#detail-priority").innerHTML = `<span class="priority ${priorityClass(item.priority)}"><i></i>${escapeHtml(item.priority)}</span>`;
   $("#detail-status").className = `status-pill status-${escapeAttribute(item.status)}`;
   $("#detail-status").textContent = item.status;
@@ -288,6 +297,19 @@ function renderAnalysis(item) {
   $("#prototype-select").value = item.id;
   $("#prototype-brief").innerHTML = `<strong>${escapeHtml(title)}</strong><p>${escapeHtml(text)}</p>`;
   renderPrototype(item);
+}
+
+function renderCopilotAnalysis(item) {
+  const panel = $("#copilot-analysis-result");
+  if (!item.aiAnalysis) {
+    panel.classList.add("hidden");
+    return;
+  }
+  $("#copilot-analysis-source").textContent = item.sourceFile
+    ? `来自「${item.sourceFile}」的文档分析`
+    : "基于当前需求生成";
+  $("#copilot-analysis-content").textContent = item.aiAnalysis;
+  panel.classList.remove("hidden");
 }
 
 function refreshPrototypeOptions() {
@@ -328,10 +350,275 @@ function renderPrototype(item) {
 function showView(name) {
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
-  const labels = { overview: "总览", requirements: "需求池", analysis: "需求洞察", prototype: "原型设计", prd: "需求文档" };
+  const labels = { overview: "总览", requirements: "需求池", analysis: "需求洞察", copilot: "Copilot 对话", prototype: "原型设计", prd: "需求文档" };
   $("#breadcrumb-current").textContent = labels[name] || "总览";
   $("#sidebar").classList.remove("open");
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateCopilotConnectionUi() {
+  const connected = Boolean(copilotState.token);
+  $("#copilot-status-text").textContent = connected ? "Copilot 已连接" : "连接 Copilot";
+  $("#open-ai-settings").classList.toggle("connected", connected);
+  $("#chat-input").disabled = !connected || copilotState.busy;
+  $("#send-chat").disabled = !connected || copilotState.busy;
+  $("#disconnect-copilot").disabled = !connected || copilotState.busy;
+  $("#ai-model-selector").disabled = !connected || copilotState.busy;
+  $("#chat-model-label").textContent = connected
+    ? copilotState.models.find((model) => model.id === copilotState.modelId)?.name || "Copilot 模型"
+    : "等待连接";
+  $("#chat-welcome").classList.toggle("hidden", copilotState.messages.length > 0);
+}
+
+function openCopilotModal() {
+  $("#copilot-modal").classList.remove("hidden");
+  $("#copilot-connect-error").classList.add("hidden");
+  document.body.style.overflow = "hidden";
+  window.setTimeout(() => $("#copilot-token").focus(), 30);
+}
+
+function closeCopilotModal() {
+  $("#copilot-modal").classList.add("hidden");
+  $("#copilot-token").value = "";
+  document.body.style.overflow = $("#requirement-modal").classList.contains("hidden") ? "" : "hidden";
+}
+
+function refreshChatRequirementOptions() {
+  const select = $("#chat-requirement-select");
+  if (!select) return;
+  const previous = select.value || selectedRequirementId;
+  select.innerHTML = `<option value="">不关联具体需求</option>${requirements.map((item) => `<option value="${escapeAttribute(item.id)}">${escapeHtml(item.title)}</option>`).join("")}`;
+  if (requirements.some((item) => item.id === previous)) select.value = previous;
+  renderChatRequirementPreview();
+}
+
+function selectedChatRequirement() {
+  return requirements.find((item) => item.id === $("#chat-requirement-select").value) || null;
+}
+
+function renderChatRequirementPreview() {
+  const item = selectedChatRequirement();
+  const preview = $("#chat-requirement-preview");
+  if (!item) {
+    preview.innerHTML = "<p>选择需求后，Copilot 会结合背景回答。</p>";
+    return;
+  }
+  preview.innerHTML = `<strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.description || "尚未补充需求描述。")}</p>`;
+}
+
+function appendChatMessage(role, content) {
+  const thread = $("#chat-messages");
+  $("#chat-welcome").classList.add("hidden");
+  const message = document.createElement("article");
+  message.className = `chat-message chat-message-${role}`;
+  const avatar = document.createElement("span");
+  avatar.className = `chat-avatar ${role === "assistant" ? "chat-avatar-ai" : ""}`;
+  avatar.textContent = role === "assistant" ? "✦" : "林";
+  const body = document.createElement("div");
+  body.className = "chat-message-body";
+  const author = document.createElement("div");
+  author.className = "chat-message-author";
+  author.textContent = role === "assistant" ? "GitHub Copilot" : "你";
+  const text = document.createElement("div");
+  text.className = "chat-message-text";
+  text.textContent = content;
+  body.append(author, text);
+  if (role === "assistant") {
+    const feedback = document.createElement("div");
+    feedback.className = "chat-feedback";
+    for (const [sentiment, label] of [["helpful", "有帮助"], ["revise", "需要调整"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "feedback-button";
+      button.dataset.feedback = sentiment;
+      button.textContent = label;
+      feedback.append(button);
+    }
+    body.append(feedback);
+  }
+  message.append(avatar, body);
+  thread.append(message);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function appendThinking() {
+  const thread = $("#chat-messages");
+  const thinking = document.createElement("div");
+  thinking.className = "chat-thinking";
+  thinking.id = "chat-thinking";
+  thinking.innerHTML = "<span></span><span></span><span></span><small>Copilot 正在思考…</small>";
+  thread.append(thinking);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function removeThinking() {
+  $("#chat-thinking")?.remove();
+}
+
+function getSelectedRequirementContext() {
+  const item = selectedChatRequirement() || currentRequirement();
+  if (!item) return "";
+  return [
+    `需求标题：${item.title}`,
+    `需求描述：${item.description || "待补充"}`,
+    `需求来源：${item.source || "未注明"}`,
+    `优先级：${item.priority || "未设置"}`,
+    item.sourceFile ? `原始文档：${item.sourceFile}` : "",
+    item.aiAnalysis ? `已有 Copilot 分析：${item.aiAnalysis.slice(0, 3_000)}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+async function copilotApiRequest({ action = "chat", message, history, file, model = copilotState.modelId }) {
+  if (!copilotState.token) throw new Error("请先连接 GitHub Copilot。");
+  let body;
+  const headers = { Authorization: `Bearer ${copilotState.token}` };
+  if (file) {
+    body = new FormData();
+    body.append("action", "analyze-document");
+    body.append("model", model);
+    body.append("document", file);
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({
+      action,
+      model,
+      message,
+      history,
+      context: getSelectedRequirementContext(),
+    });
+  }
+  const response = await fetch("/api/copilot", { method: "POST", headers, body });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `Copilot 请求失败（${response.status}）。`);
+  return result;
+}
+
+async function connectCopilot(token) {
+  const response = await fetch("/api/copilot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action: "models" }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `连接失败（${response.status}）。`);
+  if (!Array.isArray(result.models) || result.models.length === 0) {
+    throw new Error("账号已验证，但没有可用的 Copilot 模型。请检查订阅或组织策略。");
+  }
+  copilotState.token = token;
+  copilotState.models = result.models;
+  copilotState.modelId = result.models[0].id;
+  const selector = $("#ai-model-selector");
+  selector.replaceChildren(...result.models.map((model) => {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.name;
+    return option;
+  }));
+  selector.value = copilotState.modelId;
+  updateCopilotConnectionUi();
+}
+
+async function sendCopilotMessage(rawMessage) {
+  const message = rawMessage.trim();
+  if (!message || copilotState.busy) return "";
+  if (!copilotState.token) {
+    openCopilotModal();
+    showToast("先连接你自己的 GitHub Copilot 账号。");
+    return "";
+  }
+  if (message.length > 4_000) {
+    showToast("消息不能超过 4,000 个字符。");
+    return "";
+  }
+
+  copilotState.busy = true;
+  copilotState.messages.push({ role: "user", content: message });
+  appendChatMessage("user", message);
+  $("#chat-input").value = "";
+  updateCopilotConnectionUi();
+  appendThinking();
+  try {
+    const history = copilotState.messages.slice(0, -1).slice(-10);
+    const result = await copilotApiRequest({ message, history });
+    if (typeof result.reply !== "string" || !result.reply.trim()) throw new Error("Copilot 没有返回文本，请重试。");
+    copilotState.messages.push({ role: "assistant", content: result.reply });
+    appendChatMessage("assistant", result.reply);
+    return result.reply;
+  } catch (error) {
+    showToast(error.message || "Copilot 请求失败。");
+    if (/授权无效|重新连接/.test(error.message)) {
+      copilotState.token = null;
+      copilotState.models = [];
+    }
+    return "";
+  } finally {
+    removeThinking();
+    copilotState.busy = false;
+    updateCopilotConnectionUi();
+  }
+}
+
+async function analyzeCurrentRequirementWithCopilot() {
+  const item = currentRequirement();
+  if (!item) {
+    showToast("请先创建一条需求。");
+    return;
+  }
+  const request = `请对当前需求做一次完整的产品分析，并用清晰的 Markdown 标题组织回答：\n1. 产品形态与目标用户\n2. 用户问题、场景与价值\n3. UI / UX 信息架构、关键页面、交互状态、无障碍与响应式建议\n4. 功能拆解、MVP 边界与优先级\n5. 部署架构、集成依赖与运维建议\n6. 技术可行性、实施步骤与主要风险\n7. 市场机会、替代方案与验证方法（不得虚构市场数据或竞品事实）\n8. 成功指标、待确认问题与下一步建议\n明确区分文档事实、推断和待验证假设。`;
+  showView("analysis");
+  $("#analyze-with-copilot").disabled = true;
+  const reply = await sendCopilotMessage(request);
+  $("#analyze-with-copilot").disabled = false;
+  if (!reply) return;
+  item.aiAnalysis = reply.slice(0, 12_000);
+  item.updated = "刚刚";
+  saveRequirements();
+  renderCopilotAnalysis(item);
+  showToast("Copilot 已完成当前需求的产品分析。");
+}
+
+async function analyzeUploadedDocument(file) {
+  const submit = $("#requirement-submit");
+  const originalLabel = submit.innerHTML;
+  submit.disabled = true;
+  submit.textContent = "正在分析文档…";
+  try {
+    const result = await copilotApiRequest({ file });
+    const analysis = result.requirement;
+    const item = {
+      id: `req-${Date.now()}`,
+      title: analysis.title,
+      description: analysis.summary,
+      source: "钉钉文档",
+      sourceFile: analysis.sourceFile,
+      priority: analysis.priority,
+      status: "分析中",
+      owner: "林小满",
+      initials: "林",
+      updated: "刚刚",
+      tags: analysis.tags,
+      aiAnalysis: analysis.analysis,
+      documentTruncated: analysis.truncated,
+    };
+    requirements.unshift(item);
+    selectedRequirementId = item.id;
+    saveRequirements();
+    copilotState.messages.push({ role: "user", content: `请分析我上传的钉钉需求文档：${file.name}` });
+    copilotState.messages.push({ role: "assistant", content: analysis.analysis });
+    appendChatMessage("user", `请分析我上传的钉钉需求文档：${file.name}`);
+    appendChatMessage("assistant", analysis.analysis);
+    closeModal();
+    renderRequirements();
+    renderAnalysis(item);
+    showView("analysis");
+    if (analysis.truncated) showToast("文档文字较长，Copilot 已分析前 12,000 个字符。");
+    else showToast("文档已分析并建立需求，可在右侧查看建议。");
+  } catch (error) {
+    showToast(error.message || "文档分析失败，请检查文件后重试。");
+  } finally {
+    submit.disabled = false;
+    submit.innerHTML = originalLabel;
+  }
 }
 
 function openRequirement(item) {
@@ -347,8 +634,10 @@ function openModal() {
 
 function closeModal() {
   $("#requirement-modal").classList.add("hidden");
-  document.body.style.overflow = "";
+  document.body.style.overflow = $("#copilot-modal").classList.contains("hidden") ? "" : "hidden";
   $("#requirement-form").reset();
+  $("#upload-title").textContent = "选择导出的文档";
+  $("#upload-description").textContent = "支持 DOCX、PDF、TXT、Markdown、CSV，最大 4 MB";
 }
 
 function bindNavigation() {
@@ -362,6 +651,91 @@ function bindNavigation() {
   $("#analysis-back").addEventListener("click", () => showView("requirements"));
   $("#analysis-to-prototype").addEventListener("click", () => showView("prototype"));
   $("#aside-to-prototype").addEventListener("click", () => showView("prototype"));
+  $("#analyze-with-copilot").addEventListener("click", analyzeCurrentRequirementWithCopilot);
+  $("#discuss-analysis").addEventListener("click", () => {
+    const item = currentRequirement();
+    if (item) $("#chat-requirement-select").value = item.id;
+    renderChatRequirementPreview();
+    showView("copilot");
+  });
+  $("#open-ai-settings").addEventListener("click", openCopilotModal);
+  $("#connect-from-chat").addEventListener("click", openCopilotModal);
+  $("#copilot-modal-close").addEventListener("click", closeCopilotModal);
+  $("#copilot-modal-cancel").addEventListener("click", closeCopilotModal);
+  $("#copilot-modal").addEventListener("click", (event) => {
+    if (event.target === $("#copilot-modal")) closeCopilotModal();
+  });
+  $("#copilot-connect-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const token = $("#copilot-token").value.trim();
+    if (!/^(gho_|github_pat_|ghu_)[A-Za-z0-9_]{20,508}$/.test(token)) {
+      $("#copilot-connect-error").textContent = "令牌格式不正确。请使用 Copilot CLI 支持的授权令牌。";
+      $("#copilot-connect-error").classList.remove("hidden");
+      return;
+    }
+    const submit = $("#copilot-connect-submit");
+    const oldText = submit.textContent;
+    submit.disabled = true;
+    submit.textContent = "正在验证 Copilot…";
+    $("#copilot-connect-error").classList.add("hidden");
+    try {
+      await connectCopilot(token);
+      closeCopilotModal();
+      showToast("GitHub Copilot 已连接，令牌仅保存在本次页面内存中。");
+    } catch (error) {
+      $("#copilot-connect-error").textContent = error.message || "连接失败，请重试。";
+      $("#copilot-connect-error").classList.remove("hidden");
+    } finally {
+      submit.disabled = false;
+      submit.textContent = oldText;
+    }
+  });
+  $("#copilot-token").addEventListener("input", () => {
+    $("#copilot-connect-error").classList.add("hidden");
+  });
+  $("#disconnect-copilot").addEventListener("click", () => {
+    copilotState.token = null;
+    copilotState.models = [];
+    copilotState.modelId = "";
+    $("#ai-model-selector").replaceChildren(new Option("连接 Copilot 后选择模型"));
+    updateCopilotConnectionUi();
+    showToast("已断开连接；对话仅留在当前页面内存中。");
+  });
+  $("#ai-model-selector").addEventListener("change", (event) => {
+    copilotState.modelId = event.target.value;
+    updateCopilotConnectionUi();
+  });
+  $("#chat-requirement-select").addEventListener("change", renderChatRequirementPreview);
+  $("#chat-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await sendCopilotMessage($("#chat-input").value);
+  });
+  $("#chat-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      $("#chat-form").requestSubmit();
+    }
+  });
+  $$(".prompt-suggestion").forEach((button) => button.addEventListener("click", () => {
+    showView("copilot");
+    sendCopilotMessage(button.dataset.prompt);
+  }));
+  $("#chat-messages").addEventListener("click", (event) => {
+    const feedbackButton = event.target.closest("[data-feedback]");
+    if (!feedbackButton) return;
+    const prompt = feedbackButton.dataset.feedback === "helpful"
+      ? "反馈：上一条分析对我有帮助，请说明其中最关键的建议，并继续给出一个可立即执行的下一步。"
+      : "反馈：上一条分析不完全符合我的预期。请先指出可能需要澄清的假设，再结合我的反馈修订方案。";
+    sendCopilotMessage(prompt);
+  });
+  $("#clear-chat").addEventListener("click", () => {
+    copilotState.messages = [];
+    $("#chat-messages").querySelectorAll(".chat-message, .chat-thinking").forEach((message) => message.remove());
+    updateCopilotConnectionUi();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !$("#copilot-modal").classList.contains("hidden")) closeCopilotModal();
+  });
   $("#detail-status").addEventListener("click", () => {
     const item = currentRequirement();
     if (!item) return;
@@ -381,18 +755,41 @@ function bindRequirements() {
   $("#quick-new").addEventListener("click", openModal);
   $("#modal-close").addEventListener("click", closeModal);
   $("#modal-cancel").addEventListener("click", closeModal);
+  $("#input-document").addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      $("#upload-title").textContent = file.name;
+      $("#upload-description").textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · 上传后由 Copilot 分析`;
+    } else {
+      $("#upload-title").textContent = "选择导出的文档";
+      $("#upload-description").textContent = "支持 DOCX、PDF、TXT、Markdown、CSV，最大 4 MB";
+    }
+  });
   $("#requirement-modal").addEventListener("click", (event) => {
     if (event.target === $("#requirement-modal")) closeModal();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !$("#requirement-modal").classList.contains("hidden")) closeModal();
   });
-  $("#requirement-form").addEventListener("submit", (event) => {
+  $("#requirement-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     const title = String(formData.get("title") || "").trim();
+    const file = $("#input-document").files?.[0];
+    if (file) {
+      if (!copilotState.token) {
+        openCopilotModal();
+        showToast("上传并分析需求文档前，请先连接 GitHub Copilot。");
+        return;
+      }
+      await analyzeUploadedDocument(file);
+      return;
+    }
     if (!title) {
       $("#input-title").focus();
+      $("#input-title").setCustomValidity("请输入需求名称，或选择一个钉钉导出文档。");
+      $("#input-title").reportValidity();
+      $("#input-title").setCustomValidity("");
       return;
     }
     const description = String(formData.get("description") || "").trim();
