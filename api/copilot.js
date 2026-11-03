@@ -7,6 +7,7 @@ import {
   buildChatPrompt,
   buildDocumentAnalysisPrompt,
   getCopilotErrorMessage,
+  getSafeCopilotErrorDetails,
   getCopilotErrorStatus,
   isSupportedCopilotToken,
   MAX_CHAT_MESSAGE_LENGTH,
@@ -209,8 +210,10 @@ export default async function handler(request, response) {
     }
   }
 
+  let phase = "runtime_start";
   try {
     const result = await withCopilotClient(token, async (client, workingDirectory) => {
+      phase = "list_models";
       const models = listCopilotModels(await client.listModels());
       if (action === "models") return { models };
 
@@ -220,6 +223,7 @@ export default async function handler(request, response) {
       }
 
       if (action === "chat") {
+        phase = "chat";
         const prompt = buildChatPrompt({
           message: input.message,
           history: input.history,
@@ -230,6 +234,7 @@ export default async function handler(request, response) {
         return { reply };
       }
 
+      phase = "analyze_document";
       const prompt = buildDocumentAnalysisPrompt({
         fileName: input.fileName,
         text: document.text,
@@ -248,6 +253,12 @@ export default async function handler(request, response) {
   } catch (error) {
     if (error.status === 400) return respond(response, 400, { error: error.message });
     const status = getCopilotErrorStatus(error);
+    console.error("Copilot request failed", {
+      action,
+      phase,
+      status,
+      ...getSafeCopilotErrorDetails(error),
+    });
     return respond(response, status, { error: getCopilotErrorMessage(status) });
   }
 }
